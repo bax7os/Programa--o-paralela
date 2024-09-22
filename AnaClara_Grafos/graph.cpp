@@ -1,54 +1,30 @@
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
+#include <stack>
 #include <stdio.h>
-
+#include <vector>
 typedef struct Graph {
 
   int *edgelistSize = 0;
-  int **edgelist= 0;
+  int **edgelist = 0;
   int vertices = 0;
-  int *countersPerVertex= 0;
-
+  int *vertice;
+  int *countersPerVertex = 0;
+  int contador_edge;
   void initialize(const char *graphDataset) {
     FILE *fp = fopen("graph.edgelist", "r");
-    int src= 0, dst=0, i = 0, contador_dest = 0;
-    
-
+    int src, dst;
+    int maxVertexId = -1;
     while (fscanf(fp, "%d %d", &src, &dst) != EOF) {
-      contador_dest++;
+      if (src > maxVertexId)
+        maxVertexId = src;
+      if (dst > maxVertexId)
+        maxVertexId = dst;
     }
-    printf("contador_destt = %d\n", contador_dest);
-    rewind(fp);
-
-    int vertices_dest[contador_dest], cont = 0;
-    for (int i = 0; i < contador_dest; i++) {
-        vertices_dest[i] = -1;
-    }
-    while (fscanf(fp, "%d %d", &src, &dst) != EOF) {
-      if (i == 0) {
-        vertices_dest[i] = dst;
-        vertices++;
-        i++;
-      } else {
-        for (int j = 0; j < contador_dest; j++) {
-          if (dst == vertices_dest[j]) {
-            cont++;
-          }
-        }
-        if (cont == 0) {
-            vertices_dest[i] = dst;
-            i++;
-            vertices++;
-        }
-      }
-      cont = 0;
-    }
-    printf("vertices = %d\n", vertices);
-    for (int j = 0; j < i; j++) {
-      printf("v %d \n", vertices_dest[j]);
-    }
-
+    vertices = maxVertexId + 1;
     rewind(fp);
     edgelistSize = (int *)malloc(vertices * sizeof(int));
     while (fscanf(fp, "%d %d", &src, &dst) != EOF) {
@@ -60,11 +36,11 @@ typedef struct Graph {
     for (int i = 0; i < vertices; i++) {
       edgelist[i] = (int *)malloc(edgelistSize[i] * sizeof(int));
     }
-    printf("\n");
+
     countersPerVertex = (int *)malloc(vertices * sizeof(int));
     memset(countersPerVertex, 0, vertices * sizeof(int));
-    rewind(fp);
 
+    rewind(fp);
   }
 
   int getVertices() { return vertices; }
@@ -74,12 +50,21 @@ typedef struct Graph {
   int getEdge(int src, int pos) { return edgelist[src][pos]; }
 
   void addEdge(int src, int dst) {
-    printf("%d %d -- \n", src, dst);
     edgelist[src][countersPerVertex[src]++] = dst;
   }
 
-  // TODO
-  bool isNeighbour(int src, int dst) { return true; }
+  bool isNeighbour(int src, int dst) {
+    for (int i = 0; i < getVertices(); i++) {
+      for (int j = 0; j < getEdgelistSize(i); j++) {
+        if (src == i and dst == getEdge(i, j)) {
+
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
   void release() {
     for (int i = 0; i < vertices; i++)
       free(edgelist[i]);
@@ -88,29 +73,199 @@ typedef struct Graph {
     free(edgelistSize);
   }
 } Graph;
+/*
+int contagem_de_cliques_serial(Graph *grafo, int k) {
 
-int main() {
+  int contagem = 0;
+  int clique_size_1 = 0;
+  int clique_size_2 = 0;
+  int *clique_1 = (int*)malloc(grafo->getVertices() * sizeof(int));
+  
+  int ultimo_vertice;
+  for (int i = 0; i < grafo->getVertices(); i++) {
+    if (grafo->getVertices() == 0) {
+      clique_1 = NULL;
+    }else{
+      clique_1[i] = i;
+      clique_size_1++;
+    }
+    
+  }
+   
+  while (clique_size_1 > 0) {
+    int *clique_2 = (int*)malloc(clique_size_1 * sizeof(int)); 
+    clique_2 = &clique_1[clique_size_1 - 1];
+    clique_size_1--;
+    clique_size_2++;
+    clique_1 = (int*)realloc(clique_1, clique_size_1 * sizeof(int));
+
+   for (int i = 0; i < clique_size_2; i++) {
+     printf("clique_2: %d ", clique_2[i]);
+    }
+printf("\n");
+    if (clique_size_2 == k) {
+      
+      contagem++;
+      printf("contagem: %d", contagem);
+      continue;
+    }
+
+    ultimo_vertice = clique_2[clique_size_2 -1];
+    printf("ultimo vertice clique 2: %d\n", ultimo_vertice);
+
+    for (int i = 0; i < clique_size_2; i++) {
+      for (int j = 0; j < grafo->getEdgelistSize(clique_2[i]); j++) {
+         int vizinho =  grafo->getEdge(clique_2[i], j);
+          printf("vizinho: %d", vizinho);
+          if (vizinho > ultimo_vertice) {
+            bool is_clique = true;
+           printf("\n");
+            for (int k = 0; k < clique_size_2; k++) {
+              printf("dentro do for: clique_2: %d ", clique_2[k]);
+                if (!grafo->isNeighbour(clique_2[k], vizinho) || clique_2[k] == vizinho) {
+                  is_clique = false;
+                  break;
+                }
+            }
+            printf("\n");
+            if (is_clique) {
+              int *nova_clique = (int*)malloc((clique_size_2 + 1) * sizeof(int));
+
+              for (int l = 0; l < clique_size_2; l++) {
+                 printf("nova_clique: %d ", clique_2[l]);
+                  nova_clique[l] = clique_2[l];
+              }
+printf("\n");
+              nova_clique[clique_size_2] = vizinho;
+              printf("vizinho_isclique: %d \n", vizinho);
+              clique_1 = (int*)realloc(clique_1, clique_size_1 * sizeof(int));
+printf("\n");
+              for (int n = 0; n < clique_size_1; n++) {
+                  clique_1[n] = nova_clique[n];
+                   printf("clique_1: %d \n", clique_2[n]);
+              }
+              printf("\n");
+              free(nova_clique);
+            }
+            
+          }
+      }
+    }
+
+
+
+  }
+  free(clique_1);
+  return contagem;
+}
+*/
+
+
+int contagem_de_cliques_serial(Graph *grafo, int k) {
+    int contagem = 0;
+    std::vector<std::vector<int>> cliques;
+    
+
+    // Inicializa cliques com vértices individuais
+    for (int i = 0; i < grafo->getVertices(); i++) {
+        cliques.push_back({i});
+    }
+
+    while (!cliques.empty()) {
+        // Pega a última clique e remove do vetor de cliques
+        std::vector<int> clique = cliques.back();
+        cliques.pop_back();
+
+
+        // Imprime a clique atual
+        printf("Clique atual: ");
+        for (int vertice : clique) {
+            printf("%d ", vertice);
+        }
+        printf("\n");
+
+        // Se a clique já tem o tamanho k, conta como uma clique válida
+        if (clique.size() == k) {
+            contagem++;
+            printf("\nContagem: %d\n", contagem);
+            continue;
+        }
+
+        // Pega o último vértice da clique
+       
+        // Para cada vértice da clique atual
+        for (int vertice : clique) {
+            printf("Vértice: %d\n", vertice);
+ int ultimo_vertice = clique.back();
+        printf("Último vértice: %d\n", ultimo_vertice);
+
+            // Verifica os vizinhos do vértice
+            for (int j = 0; j < grafo->getEdgelistSize(vertice); j++) {
+                int vizinho = grafo->getEdge(vertice, j);
+                printf("Vizinho: %d\n", vizinho);
+
+                // Se o vizinho é maior que o último vértice e for vizinho de todos da clique
+                if (vizinho > ultimo_vertice && 
+                    std::all_of(clique.begin(), clique.end(), [&](int v) { return grafo->isNeighbour(v, vizinho); })) {
+                    
+                    // Cria nova clique
+                    std::vector<int> nova_clique = clique;
+                    nova_clique.push_back(vizinho);
+                    clique.push_back(vizinho);
+
+                    // Imprime a nova clique formada
+                    printf("Nova clique formada: ");
+                    for (int nv : nova_clique) {
+                        printf("%d ", nv);
+                    }
+                    printf("\n");
+
+                    // Adiciona a nova clique à lista de cliques
+                    cliques.push_back(nova_clique);
+                }
+            }
+        }
+
+        // Imprime o estado atual de todas as cliques
+        printf("Estado atual das cliques:\n");
+        for (const auto& c : cliques) {
+            printf("[ ");
+            for (int v : c) {
+                printf("%d ", v);
+            }
+            printf("]\n");
+        }
+    }
+
+    return contagem;
+}
+
+int main(int argc, char *argv[]) {
+  int k = atoi(argv[1]);
+  printf("Valor de k: %d\n", k);
   Graph *graph = new Graph;
   graph->initialize("graph.edgelist");
   FILE *fp = fopen("graph.edgelist", "r");
-  int src=0, dst=0;
+  int src = 0, dst = 0;
 
   while (fscanf(fp, "%d %d", &src, &dst) != EOF) {
     graph->addEdge(src, dst);
-    printf("src: %d dst: %d \n", src, dst);
   }
-  
-  printf("%d \n", graph->getVertices());
 
+  printf("Cliques: %d", contagem_de_cliques_serial(graph, k));
 
   fclose(fp);
-printf("oi");
-  for(int i = 0 ; i < graph->getVertices() ; i++) {
-        for(int j = 0 ; j < graph->getEdgelistSize(i) ; j++) {
-          printf("%d %d\n", i, graph->getEdge(i, j));
+
+  for (int i = 0; i < graph->getVertices(); i++) {
+    for (int j = 0; j < graph->getEdgelistSize(i); j++) {
+      // printf("%d %d\n", i, graph->getEdge(i, j));
     }
   }
   graph->release();
   free(graph);
   return 0;
 }
+
+// As cliques estavam repetindo na cliques pois não atestava que tal numero x estava na clique, então
+// adicionei esse numero na clique quando atualizamos o valor de nova_clique, mas não dá certo
+// para os outros exemplos maiores
