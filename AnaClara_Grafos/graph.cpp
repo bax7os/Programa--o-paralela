@@ -2,8 +2,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
-#include <stack>
 #include <stdio.h>
 #include <vector>
 typedef struct Graph {
@@ -80,7 +78,7 @@ int contagem_de_cliques_serial(Graph *grafo, int k) {
   int clique_size_1 = 0;
   int clique_size_2 = 0;
   int *clique_1 = (int*)malloc(grafo->getVertices() * sizeof(int));
-  
+
   int ultimo_vertice;
   for (int i = 0; i < grafo->getVertices(); i++) {
     if (grafo->getVertices() == 0) {
@@ -89,11 +87,11 @@ int contagem_de_cliques_serial(Graph *grafo, int k) {
       clique_1[i] = i;
       clique_size_1++;
     }
-    
+
   }
-   
+
   while (clique_size_1 > 0) {
-    int *clique_2 = (int*)malloc(clique_size_1 * sizeof(int)); 
+    int *clique_2 = (int*)malloc(clique_size_1 * sizeof(int));
     clique_2 = &clique_1[clique_size_1 - 1];
     clique_size_1--;
     clique_size_2++;
@@ -104,7 +102,7 @@ int contagem_de_cliques_serial(Graph *grafo, int k) {
     }
 printf("\n");
     if (clique_size_2 == k) {
-      
+
       contagem++;
       printf("contagem: %d", contagem);
       continue;
@@ -122,14 +120,14 @@ printf("\n");
            printf("\n");
             for (int k = 0; k < clique_size_2; k++) {
               printf("dentro do for: clique_2: %d ", clique_2[k]);
-                if (!grafo->isNeighbour(clique_2[k], vizinho) || clique_2[k] == vizinho) {
-                  is_clique = false;
-                  break;
+                if (!grafo->isNeighbour(clique_2[k], vizinho) || clique_2[k] ==
+vizinho) { is_clique = false; break;
                 }
             }
             printf("\n");
             if (is_clique) {
-              int *nova_clique = (int*)malloc((clique_size_2 + 1) * sizeof(int));
+              int *nova_clique = (int*)malloc((clique_size_2 + 1) *
+sizeof(int));
 
               for (int l = 0; l < clique_size_2; l++) {
                  printf("nova_clique: %d ", clique_2[l]);
@@ -147,7 +145,7 @@ printf("\n");
               printf("\n");
               free(nova_clique);
             }
-            
+
           }
       }
     }
@@ -160,84 +158,91 @@ printf("\n");
 }
 */
 
-
 int contagem_de_cliques_serial(Graph *grafo, int k) {
-    int contagem = 0;
-    std::vector<std::vector<int>> cliques;
-    
+  int contagem = 0;
+  std::vector<std::vector<int>> cliques;
+  std::vector<int> nova_clique;
+  std::vector<std::vector<int>> cliques_save;
 
-    // Inicializa cliques com vértices individuais
-    for (int i = 0; i < grafo->getVertices(); i++) {
-        cliques.push_back({i});
+  
+
+  for (int i = 0; i < grafo->getVertices(); i++) {
+    cliques.push_back({i});
+  }
+
+  while (!cliques.empty()) {
+    std::vector<int> clique = cliques.back();
+
+    cliques.pop_back();
+
+    printf("Clique atual: ");
+    for (int vertice : clique) {
+      printf("%d ", vertice);
+    }
+    printf("\n");
+
+    if (clique.size() == k) {
+
+      if (std::find(cliques_save.begin(), cliques_save.end(), clique) == (cliques_save.end())){
+        contagem++;
+        cliques_save.push_back(clique);
+    }
+      
+      continue;
+      printf("\nContagem: %d\n", contagem);
     }
 
-    while (!cliques.empty()) {
-        // Pega a última clique e remove do vetor de cliques
-        std::vector<int> clique = cliques.back();
-        cliques.pop_back();
 
 
-        // Imprime a clique atual
-        printf("Clique atual: ");
-        for (int vertice : clique) {
-            printf("%d ", vertice);
-        }
-        printf("\n");
+    int ultimo_vertice = clique.back();
+    printf("Último vértice: %d\n", ultimo_vertice);
+    for (int vertice : clique) {
+      printf("Vértice: %d\n", vertice);
 
-        // Se a clique já tem o tamanho k, conta como uma clique válida
-        if (clique.size() == k) {
-            contagem++;
-            printf("\nContagem: %d\n", contagem);
-            continue;
-        }
+        // verifica os vizinhos do vertice
+        for (int j = 0; j < grafo->getEdgelistSize(vertice); j++) {
+          int vizinho = grafo->getEdge(vertice, j);
+          printf("vizinho de %d: %d\n", vertice, vizinho);
+          // so adiciona vizinhos que sao maiores que o ultimo vértice da clique atual
+          if (vizinho > ultimo_vertice &&
+              std::find(clique.begin(), clique.end(), vizinho) ==
+                  clique.end() && // vizinho nao esta na clique
+              std::all_of(clique.begin(), clique.end(), [&](int v) {
+                return grafo->isNeighbour(v, vizinho);
+              })) {
 
-        // Pega o último vértice da clique
+              nova_clique = clique;
+              nova_clique.push_back(vizinho);
+              cliques.push_back(nova_clique);
        
-        // Para cada vértice da clique atual
-        for (int vertice : clique) {
-            printf("Vértice: %d\n", vertice);
- int ultimo_vertice = clique.back();
-        printf("Último vértice: %d\n", ultimo_vertice);
-
-            // Verifica os vizinhos do vértice
-            for (int j = 0; j < grafo->getEdgelistSize(vertice); j++) {
-                int vizinho = grafo->getEdge(vertice, j);
-                printf("Vizinho: %d\n", vizinho);
-
-                // Se o vizinho é maior que o último vértice e for vizinho de todos da clique
-                if (vizinho > ultimo_vertice && 
-                    std::all_of(clique.begin(), clique.end(), [&](int v) { return grafo->isNeighbour(v, vizinho); })) {
-                    
-                    // Cria nova clique
-                    std::vector<int> nova_clique = clique;
-                    nova_clique.push_back(vizinho);
-                    clique.push_back(vizinho);
-
-                    // Imprime a nova clique formada
-                    printf("Nova clique formada: ");
-                    for (int nv : nova_clique) {
-                        printf("%d ", nv);
-                    }
-                    printf("\n");
-
-                    // Adiciona a nova clique à lista de cliques
-                    cliques.push_back(nova_clique);
-                }
+            printf("Nova clique formada: ");
+            for (int nv : nova_clique) {
+              printf("%d ", nv);
             }
+            printf("\n");
+          }
         }
-
-        // Imprime o estado atual de todas as cliques
-        printf("Estado atual das cliques:\n");
-        for (const auto& c : cliques) {
-            printf("[ ");
-            for (int v : c) {
-                printf("%d ", v);
-            }
-            printf("]\n");
+      }
+      printf("Estado atual das cliques:\n");
+      for (const auto &c : cliques) {
+        printf("[ ");
+        for (int v : c) {
+          printf("%d ", v);
         }
+        printf("]\n");
+      }
     }
+  
+      printf("cliques_save:\n");
+      for (const auto &c : cliques_save) {
+        printf("[ ");
+        for (int v : c) {
+          printf("%d ", v);
+        }
+        printf("]\n");
+      }
 
-    return contagem;
+  return contagem;
 }
 
 int main(int argc, char *argv[]) {
@@ -266,6 +271,4 @@ int main(int argc, char *argv[]) {
   return 0;
 }
 
-// As cliques estavam repetindo na cliques pois não atestava que tal numero x estava na clique, então
-// adicionei esse numero na clique quando atualizamos o valor de nova_clique, mas não dá certo
-// para os outros exemplos maiores
+// Salvar as arestas ida e volta na mão 1 0 e 0 1
