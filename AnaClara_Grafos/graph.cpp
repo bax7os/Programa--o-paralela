@@ -1,12 +1,14 @@
 #include <algorithm>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <stdio.h>
-#include <vector>
-#include <thread>
 #include <mutex>
 #include <queue>
+#include <semaphore.h>
+#include <stdio.h>
+#include <thread>
+#include <vector>
 
 typedef struct Graph {
 
@@ -22,10 +24,10 @@ typedef struct Graph {
 
     // Primeira passada para encontrar o número máximo de vértices
     while (fscanf(fp, "%d %d", &src, &dst) != EOF) {
-        if (src > maxVertexId)
-            maxVertexId = src;
-        if (dst > maxVertexId)
-            maxVertexId = dst;
+      if (src > maxVertexId)
+        maxVertexId = src;
+      if (dst > maxVertexId)
+        maxVertexId = dst;
     }
 
     vertices = maxVertexId + 1;
@@ -34,21 +36,22 @@ typedef struct Graph {
     // Inicialização dos tamanhos das listas de adjacências
     edgelistSize = (int *)calloc(vertices, sizeof(int));
 
-    // Segunda passada para contar as arestas e alocar espaço, incluindo as bidirecionais
+    // Segunda passada para contar as arestas e alocar espaço, incluindo as
+    // bidirecionais
     while (fscanf(fp, "%d %d", &src, &dst) != EOF) {
-        edgelistSize[src]++;
-        edgelistSize[dst]++; // Considerando a adição bidirecional
+      edgelistSize[src]++;
+      edgelistSize[dst]++; // Considerando a adição bidirecional
     }
 
     // Alocação de memória para as arestas
     edgelist = (int **)malloc(vertices * sizeof(int *));
     for (int i = 0; i < vertices; i++) {
-        edgelist[i] = (int *)malloc(edgelistSize[i] * sizeof(int));
+      edgelist[i] = (int *)malloc(edgelistSize[i] * sizeof(int));
     }
 
     countersPerVertex = (int *)calloc(vertices, sizeof(int));
     rewind(fp);
-}
+  }
 
   int getVertices() { return vertices; }
 
@@ -56,35 +59,24 @@ typedef struct Graph {
 
   int getEdge(int src, int pos) { return edgelist[src][pos]; }
 
-void addEdge(int src, int dst) {
-    int pos = countersPerVertex[src];  // Armazena o índice atual
-    edgelist[src][pos] = dst;          // Adiciona a aresta na posição correta
-    countersPerVertex[src]++;          // Incrementa o índice após a adição
-    //printf(" ADDEDGE: src: %d dst: %d %d\n", src, dst, edgelist[src][pos]);  // Usa o valor armazenado
-}
+  void addEdge(int src, int dst) {
+    int pos = countersPerVertex[src]; // Armazena o índice atual
+    edgelist[src][pos] = dst;         // Adiciona a aresta na posição correta
+    countersPerVertex[src]++;         // Incrementa o índice após a adição
+    // printf(" ADDEDGE: src: %d dst: %d %d\n", src, dst, edgelist[src][pos]);
+    // // Usa o valor armazenado
+  }
 
   bool isNeighbour(int src, int dst) {
     for (int i = 0; i < getEdgelistSize(src); i++) {
       if (edgelist[src][i] == dst) {
-        //printf("sim");
+        // printf("sim");
         return true;
       }
     }
-   // printf("nao");
+    // printf("nao");
     return false;
   }
-  // bool isNeighbour(int src, int dst) {
-  // for (int i = 0; i < getVertices(); i++) {
-  // for (int j = 0; j < getEdgelistSize(i); j++) {
-  //   if (src == i and dst == getEdge(i, j)) {
-
-  //     return true;
-  //   }
-  //   }
-  //   }
-
-  // return false;
-  // }
 
   void release() {
     for (int i = 0; i < vertices; i++)
@@ -103,155 +95,200 @@ void addEdge(int src, int dst) {
 
 } Graph;
 
-
-#include <queue>
-
 std::mutex mtx;
-std::mutex mtx_roubo;
 
-void processa_cliques(std::queue<std::vector<int>> &cliques, Graph *grafo, int k, int &contador, int r, std::vector<std::queue<std::vector<int>>> &trabalhos_threads) {
-    std::vector<std::vector<int>> cliques_save;
-    std::vector<int> nova_clique;
+std::condition_variable cv;
+std::vector<std::queue<std::vector<int>>> trabalhos_threads;
+std::vector<int> contadores;
+std::vector<sem_t> semaforos;
 
-    while (true) {
-        std::vector<int> clique;
-        {
-            std::lock_guard<std::mutex> lock(mtx);
-            if (!cliques.empty()) {
-                clique = cliques.front();
-                cliques.pop();
-            } else {
-                // Tentar roubar cliques de outra thread
-                bool roubou = false;
-                for (auto &trabalhos : trabalhos_threads) {
-                    std::lock_guard<std::mutex> lock_roubo(mtx_roubo);
-                    if (!trabalhos.empty()) {
-                        for (int i = 0; i < r && !trabalhos.empty(); ++i) {
-                            cliques.push(trabalhos.front());
-                            trabalhos.pop();
-                        }
-                        roubou = true;
-                        break;
-                    }
-                }
-                if (!roubou) break; // Se não conseguiu roubar, termina a execução
-                continue;
-            }
+void processa_cliques_b(int tid, Graph *grafo, int k, int r) {
+  std::vector<std::vector<int>> cliques_save;
+  printf("2");
+  std::vector<int> nova_clique;
+
+  while (true) {
+    std::vector<int> clique;
+
+    {
+      std::unique_lock<std::mutex> lock(mtx);
+      cv.wait(lock, [&] {
+        return !trabalhos_threads[tid].empty() ||
+               std::all_of(trabalhos_threads.begin(), trabalhos_threads.end(), [](const auto& q) { return q.empty(); });
+
+      });
+
+      if (trabalhos_threads[tid].empty()) {
+        // Roubo de cliques
+        int max_tid = -1;
+        size_t max_size = 0;
+        for (int i = 0; i < trabalhos_threads.size(); ++i) {
+          if (i != tid && trabalhos_threads[i].size() > max_size) {
+            max_size = trabalhos_threads[i].size();
+            max_tid = i;
+          }
         }
 
-        if (clique.size() == k) {
-            std::lock_guard<std::mutex> lock(mtx);
-            if (std::find(cliques_save.begin(), cliques_save.end(), clique) == cliques_save.end()) {
-                contador++;
-                cliques_save.push_back(clique);
-            }
-            continue;
+        if (max_tid != -1 && max_size > 0) {
+          for (int i = 0; i < r && !trabalhos_threads[max_tid].empty(); ++i) {
+            trabalhos_threads[tid].push(trabalhos_threads[max_tid].front());
+            trabalhos_threads[max_tid].pop();
+          }
+        } else {
+          break; // Todas as threads estão vazias
         }
+      }
 
-        int ultimo_vertice = clique.back();
-        for (int vertice : clique) {
-            for (int j = 0; j < grafo->getEdgelistSize(vertice); j++) {
-                int vizinho = grafo->getEdge(vertice, j);
-                if (vizinho > ultimo_vertice &&
-                    std::find(clique.begin(), clique.end(), vizinho) == clique.end() &&
-                    std::all_of(clique.begin(), clique.end(), [&](int v) { return grafo->isNeighbour(v, vizinho); })) {
-                    nova_clique = clique;
-                    nova_clique.push_back(vizinho);
-                    std::lock_guard<std::mutex> lock(mtx);
-                    cliques.push(nova_clique);
-                }
-            }
-        }
+      if (!trabalhos_threads[tid].empty()) {
+        clique = trabalhos_threads[tid].front();
+        trabalhos_threads[tid].pop();
+      }
     }
+
+    if (clique.empty())
+      continue;
+
+    if (clique.size() == k) {
+      std::lock_guard<std::mutex> lock(mtx);
+      if (std::find(cliques_save.begin(), cliques_save.end(), clique) ==
+          cliques_save.end()) {
+        contadores[tid]++;
+        cliques_save.push_back(clique);
+      }
+      continue;
+    }
+
+    int ultimo_vertice = clique.back();
+    for (int vertice : clique) {
+      for (int j = 0; j < grafo->getEdgelistSize(vertice); j++) {
+        int vizinho = grafo->getEdge(vertice, j);
+        if (vizinho > ultimo_vertice &&
+            std::find(clique.begin(), clique.end(), vizinho) == clique.end() &&
+            std::all_of(clique.begin(), clique.end(), [&](int v) {
+              return grafo->isNeighbour(v, vizinho);
+            })) {
+          nova_clique = clique;
+          nova_clique.push_back(vizinho);
+          {
+            std::lock_guard<std::mutex> lock(mtx);
+            trabalhos_threads[tid].push(nova_clique);
+          }
+          cv.notify_all();
+        }
+      }
+    }
+  }
 }
 
-int contagem_de_cliques_paralela_balanceada(Graph *grafo, int k, int t, int r) {
-    int contagem = 0;
-    std::vector<std::queue<std::vector<int>>> trabalhos_threads(t);
-    for (int i = 0; i < grafo->getVertices(); i++) {
-        trabalhos_threads[i % t].push({i});
+int contagem_de_cliques_b(Graph *grafo, int k, int t, int r) {
+  int contagem = 0;
+  printf("oi");
+  std::vector<std::vector<int>> cliques;
+  for (int i = 0; i < grafo->getVertices(); i++) {
+    cliques.push_back({i});
+  }
+
+  trabalhos_threads.resize(t);
+  contadores.resize(t, 0);
+  semaforos.resize(t);
+
+  for (int i = 0; i < t; i++) {
+    sem_init(&semaforos[i], 0, 0);
+  }
+
+  int tamanho_parte = cliques.size() / t;
+  for (int i = 0; i < t; i++) {
+    for (int j = i * tamanho_parte; j < (i + 1) * tamanho_parte; j++) {
+      trabalhos_threads[i].push(cliques[j]);
     }
+  }
 
-    std::vector<std::thread> threads;
-    std::vector<int> contadores(t, 0);
+  std::vector<std::thread> threads;
+  for (int i = 0; i < t; i++) {
+    threads.push_back(std::thread(processa_cliques_b, i, grafo, k, r));
+  }
 
-    for (int i = 0; i < t; i++) {
-        threads.push_back(std::thread(processa_cliques, std::ref(trabalhos_threads[i]), grafo, k, std::ref(contadores[i]), r, std::ref(trabalhos_threads)));
-    }
+  for (auto &th : threads) {
+    th.join();
+  }
 
-    for (auto &th : threads) {
-        th.join();
-    }
+  for (int c : contadores) {
+    contagem += c;
+  }
 
-    for (int c : contadores) {
-        contagem += c;
-    }
-
-    return contagem;
+  for (int i = 0; i < t; i++) {
+    sem_destroy(&semaforos[i]);
+  }
+  printf("check");
+  return contagem;
 }
 
+void processa_cliques(std::vector<std::vector<int>> cliques, Graph *grafo,
+                      int k, int &contador) {
+  std::vector<std::vector<int>> cliques_save;
+  std::vector<int> nova_clique;
 
+  while (!cliques.empty()) {
+    std::vector<int> clique = cliques.back();
+    cliques.pop_back();
 
-void processa_cliques(std::vector<std::vector<int>> cliques, Graph *grafo, int k, int &contador) {
-    std::vector<std::vector<int>> cliques_save;
-    std::vector<int> nova_clique;
-
-    while (!cliques.empty()) {
-        std::vector<int> clique = cliques.back();
-        cliques.pop_back();
-
-        if (clique.size() == k) {
-            std::lock_guard<std::mutex> lock(mtx);
-            if (std::find(cliques_save.begin(), cliques_save.end(), clique) == cliques_save.end()) {
-                contador++;
-                cliques_save.push_back(clique);
-            }
-            continue;
-        }
-
-        int ultimo_vertice = clique.back();
-        for (int vertice : clique) {
-            for (int j = 0; j < grafo->getEdgelistSize(vertice); j++) {
-                int vizinho = grafo->getEdge(vertice, j);
-                if (vizinho > ultimo_vertice &&
-                    std::find(clique.begin(), clique.end(), vizinho) == clique.end() &&
-                    std::all_of(clique.begin(), clique.end(),[&](int v){ return grafo->isNeighbour(v, vizinho); })) {
-                    nova_clique = clique;
-                    nova_clique.push_back(vizinho);
-                    cliques.push_back(nova_clique);
-                }
-            }
-        }
+    if (clique.size() == k) {
+      std::lock_guard<std::mutex> lock(mtx);
+      if (std::find(cliques_save.begin(), cliques_save.end(), clique) ==
+          cliques_save.end()) {
+        contador++;
+        cliques_save.push_back(clique);
+      }
+      continue;
     }
+
+    int ultimo_vertice = clique.back();
+    for (int vertice : clique) {
+      for (int j = 0; j < grafo->getEdgelistSize(vertice); j++) {
+        int vizinho = grafo->getEdge(vertice, j);
+        if (vizinho > ultimo_vertice &&
+            std::find(clique.begin(), clique.end(), vizinho) == clique.end() &&
+            std::all_of(clique.begin(), clique.end(), [&](int v) {
+              return grafo->isNeighbour(v, vizinho);
+            })) {
+          nova_clique = clique;
+          nova_clique.push_back(vizinho);
+          cliques.push_back(nova_clique);
+        }
+      }
+    }
+  }
 }
 
 int contagem_de_cliques_paralela(Graph *grafo, int k, int t) {
-    int contagem = 0;
-    std::vector<std::vector<int>> cliques;
-    for (int i = 0; i < grafo->getVertices(); i++) {
-        cliques.push_back({i});
-    }
+  int contagem = 0;
+  std::vector<std::vector<int>> cliques;
+  for (int i = 0; i < grafo->getVertices(); i++) {
+    cliques.push_back({i});
+  }
 
-    std::vector<std::thread> threads;
-    std::vector<int> contadores(t, 0);
-    int tamanho_parte = cliques.size() / t;
+  std::vector<std::thread> threads;
+  std::vector<int> contadores(t, 0);
+  int tamanho_parte = cliques.size() / t;
 
-    for (int i = 0; i < t; i++) {
-        std::vector<std::vector<int>> parte_cliques(cliques.begin() + i * tamanho_parte, cliques.begin() + (i + 1) * tamanho_parte);
-        threads.push_back(std::thread(processa_cliques, parte_cliques, grafo, k, std::ref(contadores[i])));
-    }
+  for (int i = 0; i < t; i++) {
+    std::vector<std::vector<int>> parte_cliques(
+        cliques.begin() + i * tamanho_parte,
+        cliques.begin() + (i + 1) * tamanho_parte);
+    threads.push_back(std::thread(processa_cliques, parte_cliques, grafo, k,
+                                  std::ref(contadores[i])));
+  }
 
-    for (auto &th : threads) {
-        th.join();
-    }
+  for (auto &th : threads) {
+    th.join();
+  }
 
-    for (int c : contadores) {
-        contagem += c;
-    }
+  for (int c : contadores) {
+    contagem += c;
+  }
 
-    return contagem;
+  return contagem;
 }
-
 
 int contagem_de_cliques_serial(Graph *grafo, int k) {
   int contagem = 0;
@@ -268,18 +305,12 @@ int contagem_de_cliques_serial(Graph *grafo, int k) {
 
     cliques.pop_back();
 
-    printf("Clique atual: ");
-    for (int vertice : clique) {
-      printf("%d ", vertice);
-    }
-    printf("\n");
-
     if (clique.size() == k) {
 
       if (std::find(cliques_save.begin(), cliques_save.end(), clique) ==
           (cliques_save.end())) {
         contagem++;
-        printf("\nContagem: %d\n", contagem);
+
         cliques_save.push_back(clique);
       }
 
@@ -287,14 +318,13 @@ int contagem_de_cliques_serial(Graph *grafo, int k) {
     }
 
     int ultimo_vertice = clique.back();
-    printf("Último vértice: %d\n", ultimo_vertice);
+
     for (int vertice : clique) {
-      printf("Vértice: %d\n", vertice);
 
       // verifica os vizinhos do vertice
       for (int j = 0; j < grafo->getEdgelistSize(vertice); j++) {
         int vizinho = grafo->getEdge(vertice, j);
-        printf("vizinho de %d: %d\n", vertice, vizinho);
+
         // so adiciona vizinhos que sao maiores que o ultimo vértice da clique
         // atual
         if (vizinho > ultimo_vertice &&
@@ -307,22 +337,8 @@ int contagem_de_cliques_serial(Graph *grafo, int k) {
           nova_clique = clique;
           nova_clique.push_back(vizinho);
           cliques.push_back(nova_clique);
-
-          printf("Nova clique formada: ");
-          for (int nv : nova_clique) {
-            printf("%d ", nv);
-          }
-          printf("\n");
         }
       }
-    }
-    printf("Estado atual das cliques:\n");
-    for (const auto &c : cliques) {
-      printf("[ ");
-      for (int v : c) {
-        printf("%d ", v);
-      }
-      printf("]\n");
     }
   }
 
@@ -332,7 +348,7 @@ int contagem_de_cliques_serial(Graph *grafo, int k) {
 int main(int argc, char *argv[]) {
   int k = atoi(argv[1]);
   int t = atoi(argv[2]);
-  int r = atoi(argv[3]);
+ int r = atoi(argv[3]);
   printf("Valor de k: %d\n", k);
   Graph *graph = new Graph;
   int cont = 0;
@@ -349,14 +365,15 @@ int main(int argc, char *argv[]) {
 
     cont++;
   }
-  //printf("Cliques serial: %d", contagem_de_cliques_serial(graph, k));
-  //printf("Cliques paralela: %d", contagem_de_cliques_paralela(graph, k, t));
-  printf("Cliques paralela balanceada: %d", contagem_de_cliques_paralela_balanceada(graph, k, t,r));
-//graph->printEdgelist();
+  // printf("Cliques serial: %d", contagem_de_cliques_serial(graph, k));
+  // printf("Cliques paralela: %d", contagem_de_cliques_paralela(graph, k, t));
+  printf("check1");
+  printf("Cliques paralela balanceada: %d",contagem_de_cliques_b(graph, k, t,r));
+  // graph->printEdgelist();
 
   fclose(fp);
 
- graph->release();
+  graph->release();
   free(graph);
   return 0;
 }
