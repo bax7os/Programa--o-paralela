@@ -1,10 +1,14 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
-#include <mutex>
+#include <atomic>
 #include <omp.h>
+#include <queue>
 #include <set>
 #include <vector>
+#include <ostream>
+#include <iostream>
+#include <chrono>
 
 typedef struct Graph {
 
@@ -87,29 +91,30 @@ typedef struct Graph {
 
 } Graph;
 int contagem_de_cliques_paralela_roubo(Graph* grafo, int k, int r) {
-    int contagem = 0;
-    std::vector<std::vector<int>> cliques;
+    int contagemm = 0;
     std::set<std::vector<int>> cliques_save;
-    std::mutex mtx;
+  std::atomic<int> contagem(0);
+  auto start =
+      std::chrono::high_resolution_clock::now(); // Início da medição do tempo
 
     #pragma omp parallel
     {
         int tid = omp_get_thread_num();
         int nthreads = omp_get_num_threads();
-        std::vector<std::vector<int>> cliques_local;
+        std::queue<std::vector<int>> cliques_local;
 
         // Distribuir trabalhos iniciais
         #pragma omp for nowait
         for (int i = 0; i < grafo->getVertices(); i++) {
-            cliques_local.push_back({i});
+            cliques_local.push({i});
         }
 
         while (true) {
             std::vector<int> clique;
 
             if (!cliques_local.empty()) {
-                clique = cliques_local.back();
-                cliques_local.pop_back();
+                clique = cliques_local.front();
+                cliques_local.pop();
             } else {
                 // Roubo de trabalho
                 bool stolen = false;
@@ -117,12 +122,13 @@ int contagem_de_cliques_paralela_roubo(Graph* grafo, int k, int r) {
                     #pragma omp critical
                     {
                         // Tentar roubar r tarefas da thread t
-                        std::vector<std::vector<int>> &cliques_outra_thread = cliques_local; // Note a mudança aqui
+                        std::queue<std::vector<int>> &cliques_outra_thread = cliques_local; // Note a mudança aqui
                         if (cliques_outra_thread.size() > r) {
-                            for (int i = cliques_outra_thread.size() - r; i < cliques_outra_thread.size(); ++i) {
-                                cliques_local.push_back(cliques_outra_thread[i]);
+                            for (int i = 0; i < r; ++i) {
+                                std::vector<int> tarefa = cliques_outra_thread.front();
+                                cliques_outra_thread.pop();
+                                cliques_local.push(tarefa);
                             }
-                            cliques_outra_thread.erase(cliques_outra_thread.end() - r, cliques_outra_thread.end());
                             stolen = true;
                         }
                     }
@@ -135,9 +141,9 @@ int contagem_de_cliques_paralela_roubo(Graph* grafo, int k, int r) {
             if (clique.empty()) continue;
 
             if (clique.size() == k) {
-                std::lock_guard<std::mutex> lock(mtx);
+               
                 if (cliques_save.insert(clique).second) {
-                    contagem++;
+                    contagem.fetch_add(1);
                 }
                 continue;
             }
@@ -151,21 +157,29 @@ int contagem_de_cliques_paralela_roubo(Graph* grafo, int k, int r) {
                         std::all_of(clique.begin(), clique.end(), [&](int v) { return grafo->isNeighbour(v, vizinho); })) {
                         std::vector<int> nova_clique = clique;
                         nova_clique.push_back(vizinho);
-                        cliques_local.push_back(nova_clique);
+                        cliques_local.push(nova_clique);
                     }
                 }
             }
         }
     }
-
+ auto end =
+      std::chrono::high_resolution_clock::now(); // Fim da medição do tempo
+  std::chrono::duration<double> duration = end - start;
+  std::cout << "\nTempo de execução para k = " << k << ": " << duration.count()
+            << " segundos" << std::endl;
     return contagem;
 }
-
 int contagem_de_cliques_paralela_openmp(Graph *grafo, int k) {
   int contagem = 0;
   std::vector<std::vector<int>> cliques;
   std::set<std::vector<int>> cliques_save;
   int num_threads = 0;
+
+  auto start =
+      std::chrono::high_resolution_clock::now(); // Início da medição do tempo
+
+
 #pragma omp parallel
   {
 #pragma omp single
@@ -226,7 +240,11 @@ int contagem_de_cliques_paralela_openmp(Graph *grafo, int k) {
       }
     }
   }
-
+ auto end =
+      std::chrono::high_resolution_clock::now(); // Fim da medição do tempo
+  std::chrono::duration<double> duration = end - start;
+  std::cout << "\nTempo de execução para k = " << k << ": " << duration.count()
+            << " segundos" << std::endl;
   return contagem;
 }
 int main(int argc, char *argv[]) {
